@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/docx@7.8.2/build/index.js"></script>
 <style>
 :root {
   --navy: #0D2D6B;
@@ -694,6 +695,31 @@ body {
 /* Presenter dashboard layout — radial focus + cluster grid (uncommon) */
 
 
+/* ── ASSESSMENT NOTICE ── */
+.assessment-notice {
+  display:flex; align-items:flex-start; gap:16px;
+  background:#FFFBEA; border:2px solid #FFD166;
+  border-left:6px solid #FF9A3C; border-radius:14px;
+  padding:18px 24px; margin:0 auto 36px; max-width:920px;
+}
+.notice-icon { font-size:26px; flex-shrink:0; margin-top:2px; }
+.notice-title { font-weight:900; color:#8A5000; font-size:14px; margin-bottom:5px; text-transform:uppercase; letter-spacing:.5px; }
+.notice-text { font-size:13px; color:#5C3800; line-height:1.65; }
+.notice-text strong { color:var(--navy); }
+
+/* ── DOWNLOAD DOCX BUTTON ── */
+.btn-docx-dl {
+  background:var(--green); color:var(--navy);
+  padding:12px 22px; border-radius:10px;
+  font-weight:800; border:none; cursor:pointer;
+  font-family:inherit; font-size:14px;
+  display:inline-flex; align-items:center; gap:8px;
+  transition:transform 240ms cubic-bezier(.4,0,.2,1), box-shadow 240ms cubic-bezier(.4,0,.2,1);
+  white-space:nowrap;
+}
+.btn-docx-dl:hover { transform:translateY(-1px); box-shadow:0 8px 28px rgba(13,45,107,.18); }
+.btn-docx-dl:disabled { opacity:.6; cursor:default; transform:none; }
+
 /* Print */
 @media print {
   .cmdbar, .stage-rail, .nav-row, .notes-toggle, .notes-pad, .workshop-card, .footer-creds .actions { display: none !important; }
@@ -740,6 +766,20 @@ body {
     </div>
   </div>
 
+  <div class="assessment-notice">
+    <div class="notice-icon">📋</div>
+    <div class="notice-body">
+      <div class="notice-title">⚠ Assessment Mode — Model Answers are Hidden</div>
+      <div class="notice-text">
+        This is the <strong>student assessment workbook</strong>. No model answers appear anywhere in this module.<br/>
+        To submit your answers: <strong>1)</strong> Click <em>"Download Handwriting Worksheet"</em> below &nbsp;→&nbsp;
+        <strong>2)</strong> Print the DOCX &nbsp;→&nbsp;
+        <strong>3)</strong> Answer all questions by hand &nbsp;→&nbsp;
+        <strong>4)</strong> Submit the printed sheet to <strong>Dr. Samar Melhem · Office 225 · School of Pharmacy</strong>.
+      </div>
+    </div>
+  </div>
+
   <div class="triptych" id="triptych"></div>
 
   <div class="workshop-card">
@@ -749,7 +789,7 @@ body {
     </div>
     <div class="workshop-actions">
       <button class="btn-yellow" onclick="openCase('dur')">Begin Case 1</button>
-      <button class="btn-outline" onclick="downloadAnswerSheet()">📥 Download answer sheet</button>
+      <button class="btn-docx-dl" id="docxBtn" onclick="downloadHandwritingWorksheet()">✍️ Download Handwriting Worksheet</button>
     </div>
   </div>
 </main>
@@ -1245,63 +1285,411 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 
-// ---------- DOWNLOAD ANSWER SHEET (student only) ----------
+// ═══════════════════════════════════════════════════════════
+//  DOWNLOAD HANDWRITING WORKSHEET  (DOCX — print & hand-write)
+// ═══════════════════════════════════════════════════════════
+async function downloadHandwritingWorksheet() {
+  const btn = document.getElementById('docxBtn');
+  if (typeof docx === 'undefined') {
+    alert('The Word document library is still loading — please wait a moment and try again.');
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = '⏳ Building worksheet…';
 
-function downloadAnswerSheet() {
-  let txt = 'PIMS Case Interactive Module — Student Answer Sheet\n';
-  txt += 'Pharmacy Information Management Systems · M.Pharm Administration\n';
-  txt += 'University of Jordan\n';
-  txt += 'Generated: ' + new Date().toLocaleString() + '\n';
-  txt += '====================================================\n\n';
-  CASES.forEach(c => {
-    const cs = caseState(c.id);
-    txt += '\n=== Case ' + c.n + ': ' + c.title + ' ===\n';
-    txt += 'Setting: ' + c.setting + '\n';
-    txt += 'Status: ' + (cs.complete ? 'COMPLETE' : 'in progress') + '\n\n';
-    c.sections.forEach((sec, si) => {
-      txt += '--- ' + sec.title + ' ---\n';
-      if (sec.type === 'mcq' || (sec.type === 'flashcards' && sec.check)) {
-        const qs = sec.type === 'mcq' ? sec.questions : sec.check.questions;
-        const prefix = sec.type === 'mcq' ? 'mcq' : 'fc';
-        qs.forEach((q, i) => {
-          const k = prefix + '_' + q.id;
-          const a = cs.answers[k];
-          txt += 'Q' + (i+1) + '. ' + q.q + '\n';
-          txt += '   Your answer: ' + (a === null || a === undefined ? '(unanswered)' : String.fromCharCode(65 + a) + '. ' + q.opts[a]) + '\n\n';
-        });
-      } else if (sec.type === 'dnd') {
-        const placement = (cs.answers['dnd_' + (si + 1)] || {}).placement || {};
-        sec.items.forEach(it => {
-          const b = sec.bins.find(b => b.id === placement[it.id]);
-          txt += '• ' + it.text + '  →  ' + (b ? b.label : '(not placed)') + '\n';
-        });
-        txt += '\n';
-      } else if (sec.type === 'fill') {
-        sec.sentences.forEach(s => {
-          const k = 'fill_' + s.id;
-          txt += s.before + ' [' + (cs.answers[k] || '____') + '] ' + s.after + '\n';
-        });
-        txt += '\n';
-      } else if (sec.type === 'essay') {
-        sec.prompts.forEach((p, i) => {
-          const k = 'essay_' + p.id;
-          txt += 'Q' + (i+1) + '. ' + p.q + '\n';
-          txt += '   Response: ' + (cs.answers[k] || '(not answered)') + '\n\n';
-        });
-      }
+  try {
+    const {
+      Document, Packer, Paragraph, TextRun,
+      Table, TableRow, TableCell,
+      AlignmentType, WidthType, BorderStyle, ShadingType,
+      LevelFormat, VerticalAlign
+    } = docx;
+
+    /* ─── tiny helpers ─────────────────────────────────── */
+    const NAVY = '0D2D6B', TEAL = '0A7E8C', ORANGE = 'FF9A3C';
+    const DXA = WidthType.DXA;
+
+    // blank spacer paragraph
+    const sp = (before=0, after=120) =>
+      new Paragraph({ spacing:{ before, after },
+        children:[new TextRun({ text:' ', size:22 })] });
+
+    // thin horizontal rule via paragraph bottom border
+    const hr = (color='AAAAAA', thick=6) =>
+      new Paragraph({
+        border:{ bottom:{ style:BorderStyle.SINGLE, size:thick, color, space:1 } },
+        spacing:{ before:60, after:180 },
+        children:[new TextRun({ text:' ' })]
+      });
+
+    // writing line — one ruled blank line for handwriting
+    const writingLine = (after=200) =>
+      new Paragraph({
+        border:{ bottom:{ style:BorderStyle.SINGLE, size:3, color:'BBBBBB', space:1 } },
+        spacing:{ before:0, after },
+        children:[new TextRun({ text:' ', size:28 })]
+      });
+
+    // section heading (teal band)
+    const secHead = (txt) =>
+      new Paragraph({
+        shading:{ type:ShadingType.CLEAR, fill:'E6F4F5' },
+        border:{
+          left:{ style:BorderStyle.THICK, size:24, color:TEAL, space:1 },
+          bottom:{ style:BorderStyle.SINGLE, size:2, color:'C0DEE1', space:1 }
+        },
+        spacing:{ before:320, after:60 },
+        children:[new TextRun({ text:txt, bold:true, size:26, color:TEAL, font:'Calibri' })]
+      });
+
+    // sub heading (navy)
+    const subH = (txt) =>
+      new Paragraph({
+        spacing:{ before:160, after:60 },
+        children:[new TextRun({ text:txt, bold:true, size:24, color:NAVY, font:'Calibri' })]
+      });
+
+    // instruction line (italic muted)
+    const instr = (txt) =>
+      new Paragraph({
+        spacing:{ after:140 },
+        children:[new TextRun({ text:txt, italics:true, size:20, color:'666666', font:'Calibri' })]
+      });
+
+    // bordered cell shortcut
+    const bCell = (children, w, opts={}) => new TableCell({
+      borders:{
+        top:   { style:BorderStyle.SINGLE, size:4, color:'CCCCCC' },
+        bottom:{ style:BorderStyle.SINGLE, size:4, color:'CCCCCC' },
+        left:  { style:BorderStyle.SINGLE, size:4, color:'CCCCCC' },
+        right: { style:BorderStyle.SINGLE, size:4, color:'CCCCCC' }
+      },
+      margins:{ top:80, bottom:80, left:140, right:140 },
+      width:{ size:w, type:DXA },
+      verticalAlign: VerticalAlign.CENTER,
+      ...opts,
+      children
     });
-  });
-  if (state.notes) txt += '\n\n=== Workshop notes ===\n' + state.notes + '\n';
-  const blob = new Blob([txt], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'PIMS_Case_Module_Answers_' + new Date().toISOString().slice(0,10) + '.txt';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+
+    /* ─── document body ─────────────────────────────────── */
+    const body = [];
+
+    /* ── Title block ── */
+    body.push(new Paragraph({
+      alignment:AlignmentType.CENTER,
+      spacing:{ after:60 },
+      children:[new TextRun({ text:'PIMS Case Interactive Module', bold:true, size:38, color:NAVY, font:'Calibri' })]
+    }));
+    body.push(new Paragraph({
+      alignment:AlignmentType.CENTER,
+      spacing:{ after:60 },
+      children:[new TextRun({ text:'Handwriting Assessment Worksheet', bold:true, size:32, color:TEAL, font:'Calibri' })]
+    }));
+    body.push(new Paragraph({
+      alignment:AlignmentType.CENTER,
+      spacing:{ after:40 },
+      children:[new TextRun({ text:'Pharmacy Information Management Systems  \u00B7  M.Pharm Administration', size:22, italics:true, font:'Calibri' })]
+    }));
+    body.push(new Paragraph({
+      alignment:AlignmentType.CENTER,
+      spacing:{ after:40 },
+      children:[new TextRun({ text:'School of Pharmacy  \u00B7  University of Jordan', size:22, font:'Calibri' })]
+    }));
+    body.push(new Paragraph({
+      alignment:AlignmentType.CENTER,
+      spacing:{ after:200 },
+      children:[new TextRun({ text:'Dr. Samar J. Melhem  \u00B7  sa.melhem@ju.edu.jo  \u00B7  Office 225', size:20, color:'777777', font:'Calibri' })]
+    }));
+
+    /* ── Student info table ── */
+    body.push(new Table({
+      width:{ size:9360, type:DXA },
+      columnWidths:[4320, 2520, 2520],
+      rows:[
+        new TableRow({ children:[
+          bCell([new Paragraph({ children:[
+            new TextRun({ text:'Student Name:  ', bold:true, size:22, font:'Calibri' }),
+            new TextRun({ text:'_'.repeat(26), size:22 })
+          ]})], 4320),
+          bCell([new Paragraph({ children:[
+            new TextRun({ text:'Student ID:  ', bold:true, size:22, font:'Calibri' }),
+            new TextRun({ text:'_'.repeat(14), size:22 })
+          ]})], 2520),
+          bCell([new Paragraph({ children:[
+            new TextRun({ text:'Date:  ', bold:true, size:22, font:'Calibri' }),
+            new TextRun({ text:'_'.repeat(18), size:22 })
+          ]})], 2520)
+        ]})
+      ]
+    }));
+
+    body.push(sp(120,0));
+
+    /* ── Instructions box ── */
+    body.push(new Paragraph({
+      shading:{ type:ShadingType.CLEAR, fill:'FFF3CD' },
+      border:{
+        top:   { style:BorderStyle.SINGLE, size:8, color:ORANGE, space:1 },
+        left:  { style:BorderStyle.THICK,  size:24, color:ORANGE, space:1 },
+        right: { style:BorderStyle.SINGLE, size:8, color:ORANGE, space:1 },
+        bottom:{ style:BorderStyle.NONE,   size:0, color:ORANGE, space:1 }
+      },
+      spacing:{ before:100, after:0 },
+      children:[new TextRun({ text:'\u26A0  ASSESSMENT INSTRUCTIONS', bold:true, size:22, color:'8A5000', font:'Calibri' })]
+    }));
+    body.push(new Paragraph({
+      shading:{ type:ShadingType.CLEAR, fill:'FFF3CD' },
+      border:{
+        left:  { style:BorderStyle.THICK,  size:24, color:ORANGE, space:1 },
+        right: { style:BorderStyle.SINGLE, size:8, color:ORANGE, space:1 },
+        bottom:{ style:BorderStyle.SINGLE, size:8, color:ORANGE, space:1 }
+      },
+      spacing:{ before:0, after:80 },
+      children:[new TextRun({
+        text:'Print this worksheet  \u2192  Answer ALL questions by hand (pen or pencil)  \u2192  Submit to Dr. Samar Melhem, Office 225, School of Pharmacy. No model answers are included. Individual work only \u2014 no collaboration permitted.',
+        size:20, color:'5C3800', font:'Calibri'
+      })]
+    }));
+
+    body.push(sp(60,0));
+    body.push(hr(NAVY, 10));
+
+    /* ════════════════════════════════════════════════════
+       LOOP THROUGH CASES
+    ════════════════════════════════════════════════════ */
+    CASES.forEach((c, ci) => {
+
+      /* page break between cases */
+      if (ci > 0) {
+        body.push(new Paragraph({
+          pageBreakBefore:true,
+          children:[new TextRun({ text:' ' })]
+        }));
+      } else {
+        body.push(sp(80,0));
+      }
+
+      /* Case banner */
+      body.push(new Paragraph({
+        shading:{ type:ShadingType.CLEAR, fill:'E8EDF8' },
+        border:{ left:{ style:BorderStyle.THICK, size:30, color:NAVY, space:1 } },
+        spacing:{ before:0, after:60 },
+        children:[
+          new TextRun({ text:`CASE ${c.n}  `, bold:true, size:34, color:NAVY, font:'Calibri' }),
+          new TextRun({ text:c.title, bold:true, size:30, color:TEAL, font:'Calibri' })
+        ]
+      }));
+      body.push(new Paragraph({
+        spacing:{ after:60 },
+        children:[new TextRun({ text:`Setting: ${c.setting}`, italics:true, size:20, color:'666666', font:'Calibri' })]
+      }));
+      body.push(hr('CCCCCC', 4));
+
+      /* ── SECTIONS ── */
+      let sNum = 0;
+      c.sections.forEach(sec => {
+        sNum++;
+
+        /* ── 1. FLASHCARD quick check (MCQ format) ── */
+        if (sec.type === 'flashcards' && sec.check) {
+          body.push(secHead(`Section ${sNum}: Terminology Check  (${sec.check.questions.length} questions)`));
+          body.push(instr('Circle the letter of the single best answer.'));
+
+          sec.check.questions.forEach((q, qi) => {
+            body.push(new Paragraph({
+              spacing:{ before:180, after:80 },
+              children:[new TextRun({ text:`Q${qi+1}.  ${q.q}`, bold:true, size:22, font:'Calibri' })]
+            }));
+            q.opts.forEach((opt, oi) => {
+              body.push(new Paragraph({
+                indent:{ left:540 },
+                spacing:{ after:60 },
+                children:[new TextRun({ text:`\u25CB   ${String.fromCharCode(65+oi)}.  ${opt}`, size:22, font:'Calibri' })]
+              }));
+            });
+          });
+          body.push(sp(80,0));
+        }
+
+        /* ── 2. DRAG-AND-DROP  →  Classification table ── */
+        if (sec.type === 'dnd') {
+          body.push(secHead(`Section ${sNum}: Classification Exercise  (${sec.items.length} items)`));
+          body.push(subH(sec.title));
+          body.push(instr(sec.instruction));
+
+          /* Legend row */
+          const perBin = Math.floor(8160 / sec.bins.length);
+          body.push(new Table({
+            width:{ size:9360, type:DXA },
+            columnWidths:[1200, ...sec.bins.map(()=>perBin)],
+            rows:[
+              new TableRow({ children:[
+                bCell([new Paragraph({ children:[new TextRun({ text:'Categories:', bold:true, size:20, color:NAVY, font:'Calibri' })] })], 1200,
+                  { shading:{ type:ShadingType.CLEAR, fill:'E8EDF8' } }),
+                ...sec.bins.map((b, bi) =>
+                  bCell([new Paragraph({ children:[new TextRun({ text:`${String.fromCharCode(65+bi)})  ${b.label}`, bold:true, size:20, color:TEAL, font:'Calibri' })] })],
+                    perBin, { shading:{ type:ShadingType.CLEAR, fill:'E8EDF8' } })
+                )
+              ]})
+            ]
+          }));
+          body.push(sp(60,0));
+
+          /* Items table — student writes category letter in last column */
+          body.push(new Table({
+            width:{ size:9360, type:DXA },
+            columnWidths:[480, 7080, 1800],
+            rows:[
+              /* header */
+              new TableRow({ children:[
+                bCell([new Paragraph({ children:[new TextRun({ text:'#', bold:true, size:18, color:NAVY, font:'Calibri' })] })],
+                  480, { shading:{ type:ShadingType.CLEAR, fill:'F2F5FF' } }),
+                bCell([new Paragraph({ children:[new TextRun({ text:'Item', bold:true, size:18, color:NAVY, font:'Calibri' })] })],
+                  7080, { shading:{ type:ShadingType.CLEAR, fill:'F2F5FF' } }),
+                bCell([new Paragraph({ children:[new TextRun({ text:'Write category here', bold:true, size:18, color:NAVY, font:'Calibri' })] })],
+                  1800, { shading:{ type:ShadingType.CLEAR, fill:'F2F5FF' } })
+              ]}),
+              /* items */
+              ...sec.items.map((it, ii) =>
+                new TableRow({ children:[
+                  bCell([new Paragraph({ children:[new TextRun({ text:`${ii+1}`, size:20, color:'999999', font:'Calibri' })] })], 480),
+                  bCell([new Paragraph({ children:[new TextRun({ text:it.text, size:22, font:'Calibri' })] })], 7080),
+                  bCell([new Paragraph({ children:[new TextRun({ text:' ', size:22 })] })], 1800)
+                ]})
+              )
+            ]
+          }));
+          body.push(sp(80,0));
+        }
+
+        /* ── 3. MCQ ── */
+        if (sec.type === 'mcq') {
+          body.push(secHead(`Section ${sNum}: Multiple Choice Questions  (${sec.questions.length} questions)`));
+          body.push(subH(sec.title));
+          body.push(instr('Circle the letter of the single best answer for each question.'));
+
+          sec.questions.forEach((q, qi) => {
+            body.push(new Paragraph({
+              spacing:{ before:200, after:80 },
+              children:[new TextRun({ text:`Q${qi+1}.  ${q.q}`, bold:true, size:22, font:'Calibri' })]
+            }));
+            q.opts.forEach((opt, oi) => {
+              body.push(new Paragraph({
+                indent:{ left:540 },
+                spacing:{ after:60 },
+                children:[new TextRun({ text:`\u25CB   ${String.fromCharCode(65+oi)}.  ${opt}`, size:22, font:'Calibri' })]
+              }));
+            });
+          });
+          body.push(sp(80,0));
+        }
+
+        /* ── 4. FILL IN THE BLANK ── */
+        if (sec.type === 'fill') {
+          body.push(secHead(`Section ${sNum}: Fill in the Blank  (${sec.sentences.length} items)`));
+          body.push(subH(sec.title));
+          body.push(instr(sec.instruction));
+
+          sec.sentences.forEach((s, si) => {
+            body.push(new Paragraph({
+              spacing:{ before:120, after:60 },
+              children:[
+                new TextRun({ text:`${si+1}.  ${s.before} `, size:22, font:'Calibri' }),
+                new TextRun({ text:'________________', size:22, underline:{ type:'single', color:'0A7E8C' } }),
+                new TextRun({ text:s.after ? `  ${s.after}` : '', size:22, font:'Calibri' })
+              ]
+            }));
+          });
+          body.push(sp(80,0));
+        }
+
+        /* ── 5. ESSAY / SHORT ANSWER ── */
+        if (sec.type === 'essay') {
+          body.push(secHead(`Section ${sNum}: Short Answer  (${sec.prompts.length} questions)`));
+          body.push(subH(sec.title));
+          body.push(instr(sec.instruction));
+
+          sec.prompts.forEach((p, pi) => {
+            body.push(new Paragraph({
+              spacing:{ before:220, after:60 },
+              children:[new TextRun({ text:`Q${pi+1}.  ${p.q}`, bold:true, size:22, font:'Calibri' })]
+            }));
+            body.push(new Paragraph({
+              spacing:{ after:100 },
+              children:[new TextRun({ text:`  Minimum ${p.min} words.`, italics:true, size:18, color:'999999', font:'Calibri' })]
+            }));
+            /* 8 writing lines per essay prompt */
+            for (let i=0; i<8; i++) body.push(writingLine(200));
+            body.push(sp(40,0));
+          });
+        }
+      });
+
+      /* ── Case score footer ── */
+      body.push(hr('CCCCCC', 4));
+      body.push(new Paragraph({
+        spacing:{ before:80 },
+        children:[
+          new TextRun({ text:'Case Score:   _______ / _______          ', bold:true, size:22, font:'Calibri' }),
+          new TextRun({ text:'Instructor Initials:   _____________________', bold:true, size:22, font:'Calibri' })
+        ]
+      }));
+      body.push(sp(80,0));
+
+    }); /* end CASES loop */
+
+    /* ── Document footer ── */
+    body.push(hr(TEAL, 8));
+    body.push(new Paragraph({
+      alignment:AlignmentType.CENTER,
+      spacing:{ before:80 },
+      children:[new TextRun({
+        text:'Dr. Samar J. Melhem  \u00B7  Pharmacy Information Management Systems  \u00B7  University of Jordan  \u00B7  sa.melhem@ju.edu.jo',
+        size:18, color:'888888', font:'Calibri'
+      })]
+    }));
+
+    /* ─── Assemble & save ─────────────────────────────── */
+    const doc = new Document({
+      creator:'Dr. Samar J. Melhem',
+      title:'PIMS Handwriting Assessment Worksheet',
+      styles:{
+        default:{
+          document:{ run:{ font:'Calibri', size:22 } }
+        }
+      },
+      numbering:{ config:[] },
+      sections:[{
+        properties:{
+          page:{
+            size:{ width:12240, height:15840 },
+            margin:{ top:1080, right:1080, bottom:1080, left:1080 }
+          }
+        },
+        children: body
+      }]
+    });
+
+    const blob = await Packer.toBlob(doc);
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = 'PIMS_Handwriting_Worksheet_' + new Date().toISOString().slice(0,10) + '.docx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+  } catch(err) {
+    console.error('DOCX generation error:', err);
+    alert('Could not generate the worksheet: ' + err.message + '\n\nPlease make sure you are connected to the internet (the library loads from unpkg.com).');
+  }
+
+  btn.disabled  = false;
+  btn.innerHTML = '✍️ Download Handwriting Worksheet';
 }
+
+
 
 
 // ---------- INIT ----------
